@@ -2,6 +2,7 @@ fastapi
 uvicorn
 pydantic
 selenium
+undetected-chromedriver
 img2pdf
 Pillow
 colorama

@@ -9,9 +9,8 @@ import base64
 import json
 from typing import Optional, List, Tuple
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+import undetected_chromedriver as uc
+from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
@@ -30,14 +29,14 @@ class BrowserHandler:
     """Manages Chrome browser for Google Drive file access."""
 
     def __init__(self):
-        self.driver: Optional[webdriver.Chrome] = None
+        self.driver: Optional[uc.Chrome] = None
         self._total_pages: int = 0
     
-    def start(self) -> "webdriver.Chrome":
+    def start(self) -> "uc.Chrome":
         """Initialize and return a configured Chrome WebDriver."""
-        log_info("Initializing Chrome browser...")
+        log_info("Initializing Chrome browser (undetected)...")
         
-        options = Options()
+        options = uc.ChromeOptions()
         
         if config.HEADLESS:
             options.add_argument("--headless=new")
@@ -46,18 +45,8 @@ class BrowserHandler:
         options.add_argument("--disable-gpu")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_argument("--disable-extensions")
         options.add_argument("--disable-infobars")
-        
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option("useAutomationExtension", False)
-        
-        options.add_argument(
-            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/125.0.0.0 Safari/537.36"
-        )
         
         if config.CHROME_USER_DATA_DIR:
             options.add_argument(f"--user-data-dir={config.CHROME_USER_DATA_DIR}")
@@ -71,7 +60,7 @@ class BrowserHandler:
         options.add_experimental_option("prefs", prefs)
         
         try:
-            self.driver = webdriver.Chrome(options=options)
+            self.driver = uc.Chrome(options=options, use_subprocess=True)
             
             if config.DEVICE_SCALE_FACTOR > 1:
                 self.driver.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", {
@@ -81,11 +70,7 @@ class BrowserHandler:
                     "mobile": False
                 })
             
-            self.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-                "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
-            })
-            
-            log_success("Chrome browser initialized successfully")
+            log_success("Undetected Chrome browser initialized successfully")
             return self.driver
             
         except WebDriverException as e:
@@ -93,8 +78,7 @@ class BrowserHandler:
             raise RuntimeError(
                 "Could not start Chrome browser. Make sure:\n"
                 "  1. Google Chrome is installed\n"
-                "  2. ChromeDriver is installed (or let selenium-manager handle it)\n"
-                "  3. Chrome version matches ChromeDriver version"
+                "  2. Chrome version is compatible"
             )
     
     def open_file(self, url: str) -> bool:
@@ -251,13 +235,15 @@ class BrowserHandler:
             log_warning(f"Could not detect page count: {e}")
             return 0
     
-    def scroll_through_all_pages(self, total_pages: int = 0) -> int:
+    def scroll_through_all_pages(self, total_pages: int = 0, progress_callback=None) -> int:
         """
         Scroll through entire document using Python-controlled loop.
         This ensures all lazy-loaded pages are rendered.
         """
         self._total_pages = total_pages
         log_info("Scrolling through document to load all pages...")
+        if progress_callback:
+            progress_callback(0, total_pages or 1, "Scrolling document to load pages...")
         if total_pages > 0:
             log_info(f"Target: {total_pages} pages")
         
@@ -327,6 +313,8 @@ class BrowserHandler:
                 
                 if total_pages > 0:
                     log_progress(min(blobs, total_pages), total_pages, f"  Pass {pass_num}:")
+                    if progress_callback:
+                        progress_callback(min(blobs, total_pages), total_pages, f"Loading page {min(blobs, total_pages)}/{total_pages}")
                 
                 # All pages loaded?
                 if total_pages > 0 and blobs >= total_pages:
@@ -390,7 +378,7 @@ class BrowserHandler:
         body.send_keys(Keys.HOME)
         time.sleep(1)
     
-    def capture_page_images(self, total_pages: int = 0) -> List[bytes]:
+    def capture_page_images(self, total_pages: int = 0, progress_callback=None) -> List[bytes]:
         """
         Extract all page images from the Google Drive viewer.
         Uses page-by-page scrolling to handle lazy-loaded content.
@@ -398,6 +386,8 @@ class BrowserHandler:
         total_pages = total_pages or self._total_pages
         
         # Try bulk extraction first
+        if progress_callback:
+            progress_callback(0, total_pages or 1, "Extracting loaded images...")
         images = self._extract_all_blobs()
         if images and (total_pages <= 0 or len(images) >= total_pages):
             log_success(f"Extracted {len(images)} pages in bulk")
@@ -406,7 +396,7 @@ class BrowserHandler:
         got = len(images) if images else 0
         if total_pages > 0 and got < total_pages:
             log_warning(f"Bulk extraction got {got}/{total_pages}. Trying page-by-page...")
-            images = self._extract_page_by_page(total_pages)
+            images = self._extract_page_by_page(total_pages, progress_callback)
             if images and len(images) >= total_pages * 0.9:
                 log_success(f"Extracted {len(images)} pages via page-by-page")
                 return images
@@ -449,7 +439,7 @@ class BrowserHandler:
             log_warning(f"Bulk blob extraction failed: {e}")
             return []
     
-    def _extract_page_by_page(self, total_pages: int) -> List[bytes]:
+    def _extract_page_by_page(self, total_pages: int, progress_callback=None) -> List[bytes]:
         """
         Scroll to each page individually, wait for it to render,
         then extract its blob image. This handles lazy-loading properly.
@@ -524,6 +514,8 @@ class BrowserHandler:
                     images.append(img_bytes)
             
             log_progress(page_idx + 1, total_pages, "  Extracting:")
+            if progress_callback:
+                progress_callback(page_idx + 1, total_pages, f"Extracting high-quality image {page_idx + 1}/{total_pages}")
         
         return images
     

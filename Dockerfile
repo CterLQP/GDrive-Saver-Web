@@ -1,5 +1,5 @@
 # Use official Python lightweight image
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 # Install system dependencies, including Google Chrome
 RUN apt-get update && apt-get install -y \

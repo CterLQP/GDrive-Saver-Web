@@ -263,9 +263,20 @@
                             statusBox.className = 'status success';
                             statusBox.innerText = '✅ ' + statusData.message;
                             
+                            // Decode base64 to blob directly in browser
+                            const byteCharacters = atob(statusData.file_data);
+                            const byteNumbers = new Array(byteCharacters.length);
+                            for (let i = 0; i < byteCharacters.length; i++) {
+                                byteNumbers[i] = byteCharacters.charCodeAt(i);
+                            }
+                            const byteArray = new Uint8Array(byteNumbers);
+                            const blob = new Blob([byteArray], {type: 'application/pdf'});
+                            const blobUrl = URL.createObjectURL(blob);
+                            
                             // Set download link
                             const link = document.getElementById('fileLink');
-                            link.href = '/api/file?path=' + encodeURIComponent(statusData.file_path);
+                            link.href = blobUrl;
+                            link.download = statusData.filename || 'download.pdf';
                             dlLink.style.display = 'block';
                             
                             btn.disabled = false;

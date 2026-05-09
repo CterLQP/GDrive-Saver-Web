@@ -85,7 +85,23 @@ def process_download(task_id: str, url: str):
         pdf_path = os.path.join(output_dir, f"{safe_title}.pdf")
         
         if builder.build_pdf(images, pdf_path):
-            tasks[task_id] = {"status": "success", "file_path": pdf_path, "progress": 100, "message": "Hoàn tất!"}
+            import base64
+            with open(pdf_path, "rb") as f:
+                pdf_b64 = base64.b64encode(f.read()).decode('utf-8')
+                
+            tasks[task_id] = {
+                "status": "success", 
+                "file_data": pdf_b64, 
+                "filename": f"{safe_title}.pdf",
+                "progress": 100, 
+                "message": "Hoàn tất!"
+            }
+            
+            # Clean up the file from disk since it's now in memory
+            try:
+                os.remove(pdf_path)
+            except:
+                pass
         else:
             tasks[task_id] = {"status": "error", "message": "Lỗi trong quá trình tạo file PDF."}
             

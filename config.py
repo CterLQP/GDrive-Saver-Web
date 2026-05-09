@@ -9,7 +9,7 @@ import os
 # ═══════════════════════════════════════════════════════════════
 
 # Default output directory for downloaded files
-OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "downloads")
+OUTPUT_DIR = "/tmp/downloads"
 
 # Image quality settings
 IMAGE_QUALITY = 95          # JPEG quality (1-100), higher = better quality, larger file
@@ -64,4 +64,4 @@ CHROME_USER_DATA_DIR = ""
 CHROME_PROFILE = "Default"
 
 # Temp directory for intermediate files
-TEMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".temp")
+TEMP_DIR = "/tmp/.temp"

@@ -36,8 +36,11 @@ def download_api(request: DownloadRequest):
         browser = BrowserHandler()
         builder = PDFBuilder()
         
-        output_dir = os.path.join(ROOT_DIR, "downloads")
+        # Vercel only allows writing to /tmp
+        output_dir = "/tmp/downloads"
+        config.TEMP_DIR = "/tmp/.temp"
         os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(config.TEMP_DIR, exist_ok=True)
         
         browser.start()
         

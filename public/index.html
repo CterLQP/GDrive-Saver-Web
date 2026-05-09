@@ -183,6 +183,13 @@
         
         <button class="btn" id="downloadBtn" onclick="startDownload()">⬇️ Start Download</button>
 
+<div class="progress-container" id="progressContainer" style="display: none; margin-top: 20px;">
+            <div class="progress-bar-bg" style="width: 100%; background: var(--border); border-radius: 8px; height: 10px; overflow: hidden;">
+                <div id="progressBar" style="width: 0%; background: var(--success); height: 100%; transition: width 0.4s;"></div>
+            </div>
+            <p id="progressText" style="text-align: center; font-size: 13px; color: var(--text-dim); margin-top: 8px;">0%</p>
+        </div>
+
         <div id="statusBox" class="status"></div>
         
         <div id="downloadLink">
@@ -201,8 +208,12 @@
         const btn = document.getElementById('downloadBtn');
         const statusBox = document.getElementById('statusBox');
         const dlLink = document.getElementById('downloadLink');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
         
         if (!urlInput) {
+            statusBox.style.display = 'block';
             statusBox.className = 'status error';
             statusBox.innerText = '❌ Please enter a Google Drive URL';
             return;
@@ -210,10 +221,14 @@
 
         // Reset UI
         btn.disabled = true;
-        btn.innerText = '⏳ Processing... (This takes time)';
+        btn.innerText = '⏳ Initializing...';
+        statusBox.style.display = 'block';
         statusBox.className = 'status loading';
-        statusBox.innerText = '⚙️ Server is running Chrome headless to capture the file. Please wait, this may take up to 60 seconds...';
+        statusBox.innerText = '⚙️ Đang gửi yêu cầu...';
         dlLink.style.display = 'none';
+        progressContainer.style.display = 'block';
+        progressBar.style.width = '0%';
+        progressText.innerText = '0%';
 
         try {
             const response = await fetch('/api/download', {
@@ -224,24 +239,56 @@
 
             const data = await response.json();
 
-            if (response.ok) {
-                statusBox.className = 'status success';
-                statusBox.innerText = '✅ File processed successfully!';
-                
-                // Set download link
-                const link = document.getElementById('fileLink');
-                link.href = '/api/file?path=' + encodeURIComponent(data.file_path);
-                dlLink.style.display = 'block';
-            } else {
-                statusBox.className = 'status error';
-                statusBox.innerText = '❌ Error: ' + (data.detail || 'Unknown error occurred.');
+            if (!response.ok) {
+                throw new Error(data.detail || 'Lỗi khởi tạo');
             }
+            
+            const taskId = data.task_id;
+            
+            // Start polling
+            const pollInterval = setInterval(async () => {
+                try {
+                    const res = await fetch(`/api/status/${taskId}`);
+                    const statusData = await res.json();
+                    
+                    if (res.ok) {
+                        // Update Progress
+                        const prog = statusData.progress || 0;
+                        progressBar.style.width = prog + '%';
+                        progressText.innerText = prog + '% - ' + (statusData.message || '');
+                        statusBox.innerText = '⚙️ ' + (statusData.message || 'Đang xử lý...');
+                        
+                        if (statusData.status === 'success') {
+                            clearInterval(pollInterval);
+                            statusBox.className = 'status success';
+                            statusBox.innerText = '✅ ' + statusData.message;
+                            
+                            // Set download link
+                            const link = document.getElementById('fileLink');
+                            link.href = '/api/file?path=' + encodeURIComponent(statusData.file_path);
+                            dlLink.style.display = 'block';
+                            
+                            btn.disabled = false;
+                            btn.innerText = '⬇️ Start Download New File';
+                        } else if (statusData.status === 'error') {
+                            clearInterval(pollInterval);
+                            throw new Error(statusData.message);
+                        }
+                    }
+                } catch(e) {
+                    clearInterval(pollInterval);
+                    statusBox.className = 'status error';
+                    statusBox.innerText = '❌ Lỗi: ' + e.message;
+                    btn.disabled = false;
+                    btn.innerText = '⬇️ Try Again';
+                }
+            }, 1500);
+
         } catch (err) {
             statusBox.className = 'status error';
-            statusBox.innerText = '❌ Network error or server timeout. Vercel Serverless might have timed out!';
-        } finally {
+            statusBox.innerText = '❌ Lỗi: ' + err.message;
             btn.disabled = false;
-            btn.innerText = '⬇️ Start Download';
+            btn.innerText = '⬇️ Try Again';
         }
     }
 </script>
